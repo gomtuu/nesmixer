@@ -3,18 +3,26 @@
 #import wave
 import struct
 
+MODE = 'NES'
+
 IN = open('in.wav', 'rb')
 IN.seek(40)
 frame_count = struct.unpack('<i', IN.read(4))[0] >> 3
 print(frame_count)
 
-OUT = open('out.wav', 'wb')
+if MODE == 'Mesen':
+    OUT = open('out-mesen.wav', 'wb')
+else:
+    OUT = open('out.wav', 'wb')
 OUT.write(b'RIFF')
 OUT.write(struct.pack('<i', 36 + 0)) # ChunkSize
 OUT.write(b'WAVE')
 OUT.write(b'fmt ')
 OUT.write(struct.pack('<i', 16)) # Subchunk1Size
-OUT.write(struct.pack('<h', 3)) # AudioFormat (1 = PCM, 3 = float)
+if MODE == 'Mesen':
+    OUT.write(struct.pack('<h', 1)) # AudioFormat (1 = PCM, 3 = float)
+else:
+    OUT.write(struct.pack('<h', 3)) # AudioFormat (1 = PCM, 3 = float)
 OUT.write(struct.pack('<h', 1)) # NumChannels
 OUT.write(struct.pack('<i', 1789773)) # SampleRate
 OUT.write(struct.pack('<i', 1789773 * 1 * 4)) # ByteRate = SampleRate * NumChannels * BitsPerSample/8
@@ -53,13 +61,17 @@ def mix_mesen(pulse1, pulse2, triangle, noise):
         tnd_vol = (818350.0 / (24329.0 / tndOutput + 100.0))
     except ZeroDivisionError:
         tnd_vol = 0
-    return pulse_vol + tnd_vol
+    return int(pulse_vol + tnd_vol)
 
 for i in range(frame_count):
     frame = IN.read(8)
     channels = struct.unpack('<4h', frame)
-    sample = mix(*channels)
-    OUT.write(struct.pack('<f', sample))
+    if MODE == 'Mesen':
+        sample = mix_mesen(*channels)
+        OUT.write(struct.pack('<i', sample))
+    else:
+        sample = mix(*channels)
+        OUT.write(struct.pack('<f', sample))
     if i % 1000000 == 0:
         print('{:0.2f}%'.format(100 * i / frame_count))
         eof = OUT.tell()
