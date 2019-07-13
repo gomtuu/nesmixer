@@ -61,9 +61,48 @@ def mix_mesen(pulse1, pulse2, triangle, noise, dmc):
         tnd_vol = 0
     return int(pulse_vol + tnd_vol)
 
+def find_triangle_discontinuities(IN):
+    IN.seek(40)
+    frame_count = struct.unpack('<i', IN.read(4))[0] >> 3
+    prev_triangle = None
+    last_change = None
+    interpolation_ranges = []
+    for i in range(frame_count):
+        frame = IN.read(5)
+        channels = struct.unpack('5B', frame)
+        triangle = channels[2]
+        if i > 0:
+            if last_change is not None:
+                if abs(triangle - prev_triangle) > 1:
+                    print('Pop detected in triangle channel at sample', i)
+                    interpolation_ranges.append((last_change, (i, triangle)))
+            if abs(triangle - prev_triangle) == 1:
+                last_change = (i, triangle)
+        prev_triangle = triangle
+        if i % 1789773 == 0:
+            print('{:0.2f}%'.format(100 * i / frame_count))
+    return interpolation_ranges
+
+print('Scanning input file for pops in triangle channel...')
+interpolation_ranges = find_triangle_discontinuities(IN)
+
+print('Writing monaural output file...')
+IN.seek(44)
+current_range = None
 for i in range(frame_count):
+    if current_range is not None and i >= range_end[0]:
+        current_range = None
+    if interpolation_ranges != [] and i >= interpolation_ranges[0][0][0]:
+        current_range = interpolation_ranges.pop(0)
+        range_begin = current_range[0]
+        range_end = current_range[1]
+        slope = (range_end[1] - range_begin[1]) / (range_end[0] - range_begin[0])
     frame = IN.read(5)
-    channels = struct.unpack('5B', frame)
+    channels = list(struct.unpack('5B', frame))
+    if current_range:
+        triangle = channels[2]
+        triangle = triangle + (i - range_begin[0]) * slope
+        channels[2] = triangle
     if MODE == 'Mesen':
         sample = mix_mesen(*channels)
         OUT.write(struct.pack('<i', sample))
