@@ -72,7 +72,7 @@ for i in range(frame_count):
     else:
         sample = mix(*channels)
         OUT.write(struct.pack('<f', sample))
-    if i % 1000000 == 0:
+    if i % 1789773 == 0:
         print('{:0.2f}%'.format(100 * i / frame_count))
         eof = OUT.tell()
         OUT.seek(4)
