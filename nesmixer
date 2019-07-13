@@ -36,9 +36,8 @@ def divide(num, denom):
     #    return 0
     return num / denom
 
-def mix(pulse1, pulse2, triangle, noise):
+def mix(pulse1, pulse2, triangle, noise, dmc):
     # https://wiki.nesdev.com/w/index.php/APU_Mixer
-    dmc = 0
     try:
         pulse_out = divide(95.88, divide(8128.0, pulse1 + pulse2) + 100.0)
     except ZeroDivisionError:
@@ -49,8 +48,7 @@ def mix(pulse1, pulse2, triangle, noise):
         tnd_out = 0
     return pulse_out + tnd_out
 
-def mix_mesen(pulse1, pulse2, triangle, noise):
-    dmc = 0
+def mix_mesen(pulse1, pulse2, triangle, noise, dmc):
     squareOutput = pulse1 + pulse2
     try:
         pulse_vol = (477600.0 / (8128.0 / squareOutput + 100.0))
@@ -64,8 +62,8 @@ def mix_mesen(pulse1, pulse2, triangle, noise):
     return int(pulse_vol + tnd_vol)
 
 for i in range(frame_count):
-    frame = IN.read(8)
-    channels = struct.unpack('<4h', frame)
+    frame = IN.read(5)
+    channels = struct.unpack('5B', frame)
     if MODE == 'Mesen':
         sample = mix_mesen(*channels)
         OUT.write(struct.pack('<i', sample))
