@@ -21,22 +21,28 @@ OUT.write(struct.pack('<h', 16)) # BitsPerSample
 OUT.write(b'data')
 OUT.write(struct.pack('<i', 0)) # Subchunk2Size
 
-prev_triangle = None
-last_change = None
-interpolation_ranges = []
-for i in range(frame_count):
-    frame = IN.read(5)
-    channels = struct.unpack('5B', frame)
-    triangle = channels[2]
-    if i > 0:
-        if last_change is not None:
-            if abs(triangle - prev_triangle) > 1:
-                print('Triangle discontinuous at sample {}: changed to {}'.format(i, triangle))
-                print('Previous change was at {} to {}'.format(*last_change))
-                interpolation_ranges.append((last_change, (i, triangle)))
-        if abs(triangle - prev_triangle) == 1:
-            last_change = (i, triangle)
-    prev_triangle = triangle
+def find_triangle_discontinuities(IN):
+    IN.seek(40)
+    frame_count = struct.unpack('<i', IN.read(4))[0] >> 3
+    prev_triangle = None
+    last_change = None
+    interpolation_ranges = []
+    for i in range(frame_count):
+        frame = IN.read(5)
+        channels = struct.unpack('5B', frame)
+        triangle = channels[2]
+        if i > 0:
+            if last_change is not None:
+                if abs(triangle - prev_triangle) > 1:
+                    print('Triangle discontinuous at sample {}: changed to {}'.format(i, triangle))
+                    print('Previous change was at {} to {}'.format(*last_change))
+                    interpolation_ranges.append((last_change, (i, triangle)))
+            if abs(triangle - prev_triangle) == 1:
+                last_change = (i, triangle)
+        prev_triangle = triangle
+    return interpolation_ranges
+
+interpolation_ranges = find_triangle_discontinuities(IN)
 
 IN.seek(44)
 current_range = None
