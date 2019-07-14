@@ -8,7 +8,7 @@ MODE = 'NES'
 in_name = sys.argv[1]
 IN = open(in_name, 'rb')
 IN.seek(40)
-frame_count = struct.unpack('<i', IN.read(4))[0] >> 3
+frame_count = struct.unpack('<i', IN.read(4))[0] // 5
 
 if in_name.endswith('.wav'):
     out_name = in_name[:-4] + '-mono.wav'
@@ -64,7 +64,7 @@ def mix_mesen(pulse1, pulse2, triangle, noise, dmc):
 
 def find_triangle_discontinuities(IN):
     IN.seek(40)
-    frame_count = struct.unpack('<i', IN.read(4))[0] >> 3
+    frame_count = struct.unpack('<i', IN.read(4))[0] // 5
     prev_triangle = None
     last_change = None
     interpolation_ranges = []
