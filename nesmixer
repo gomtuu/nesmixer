@@ -32,19 +32,14 @@ OUT.write(struct.pack('<h', 32)) # BitsPerSample
 OUT.write(b'data')
 OUT.write(struct.pack('<i', 0)) # Subchunk2Size
 
-def divide(num, denom):
-    #if denom == 0:
-    #    return 0
-    return num / denom
-
-def mix(pulse1, pulse2, triangle, noise, dmc):
+def mix_apu(pulse1, pulse2, triangle, noise, dmc):
     # https://wiki.nesdev.com/w/index.php/APU_Mixer
     try:
-        pulse_out = divide(95.88, divide(8128.0, pulse1 + pulse2) + 100.0)
+        pulse_out = 95.88 / (8128.0 / (pulse1 + pulse2) + 100.0)
     except ZeroDivisionError:
         pulse_out = 0
     try:
-        tnd_out = divide(159.79, divide(1.0, triangle / 8227.0 + noise / 12241.0 + dmc / 22638.0) + 100.0)
+        tnd_out = 159.79 / (1.0 / (triangle / 8227.0 + noise / 12241.0 + dmc / 22638.0) + 100.0)
     except ZeroDivisionError:
         tnd_out = 0
     return pulse_out + tnd_out
@@ -90,10 +85,17 @@ interpolation_ranges = find_triangle_discontinuities(IN)
 print('Writing monaural output file...')
 IN.seek(44)
 current_range = None
+if MODE == 'Mesen':
+    mix = mix_mesen
+    out_format = '<i'
+else:
+    mix = mix_apu
+    out_format = '<f'
+j = 0
 for i in range(frame_count):
     if current_range is not None and i >= range_end[0]:
         current_range = None
-    if interpolation_ranges != [] and i >= interpolation_ranges[0][0][0]:
+    if interpolation_ranges and i >= interpolation_ranges[0][0][0]:
         current_range = interpolation_ranges.pop(0)
         range_begin = current_range[0]
         range_end = current_range[1]
@@ -101,16 +103,11 @@ for i in range(frame_count):
     frame = IN.read(5)
     channels = list(struct.unpack('5B', frame))
     if current_range:
-        triangle = channels[2]
-        triangle = triangle + (i - range_begin[0]) * slope
-        channels[2] = triangle
-    if MODE == 'Mesen':
-        sample = mix_mesen(*channels)
-        OUT.write(struct.pack('<i', sample))
-    else:
-        sample = mix(*channels)
-        OUT.write(struct.pack('<f', sample))
-    if i % 1789773 == 0:
+        # channels[2] is the triangle channel
+        channels[2] = channels[2] + (i - range_begin[0]) * slope
+    sample = mix(*channels)
+    OUT.write(struct.pack(out_format, sample))
+    if j >= 1789773:
         print('{:0.2f}%'.format(100 * i / frame_count))
         eof = OUT.tell()
         OUT.seek(4)
@@ -118,6 +115,8 @@ for i in range(frame_count):
         OUT.seek(40)
         OUT.write(struct.pack('<i', i * 4))
         OUT.seek(eof)
+        j = 0
+    j += 1
 
 OUT.seek(4)
 OUT.write(struct.pack('<i', 36 + frame_count * 4))
