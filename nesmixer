@@ -68,8 +68,7 @@ def find_triangle_discontinuities(IN):
     last_change = None
     interpolation_ranges = []
     for i in range(frame_count):
-        frame = IN.read(5)
-        channels = struct.unpack('5B', frame)
+        channels = list(IN.read(5))
         triangle = channels[2]
         if i > 0:
             if last_change is not None:
@@ -88,7 +87,11 @@ interpolation_ranges = find_triangle_discontinuities(IN)
 
 print('Writing monaural output file...')
 IN.seek(44)
-current_range = None
+range_end_i = 0
+if interpolation_ranges:
+    next_range_i = interpolation_ranges[0][0][0]
+else:
+    next_range_i = frame_count + 1
 if MODE == 'Mesen':
     mix = mix_mesen
     out_format = '<i'
@@ -96,19 +99,28 @@ else:
     mix = mix_apu
     out_format = '<f'
 j = 0
+adjustment = 0
 for i in range(frame_count):
-    if current_range is not None and i >= range_end[0]:
+    if i >= range_end_i:
         current_range = None
-    if interpolation_ranges and i >= interpolation_ranges[0][0][0]:
+        adjustment = 0
+        slope = 0
+    if i >= next_range_i:
         current_range = interpolation_ranges.pop(0)
         range_begin = current_range[0]
+        range_begin_i = range_begin[0]
         range_end = current_range[1]
+        range_end_i = range_end[0]
         slope = (range_end[1] - range_begin[1]) / (range_end[0] - range_begin[0])
-    frame = IN.read(5)
-    channels = list(struct.unpack('5B', frame))
-    if current_range:
+        if interpolation_ranges:
+            next_range_i = interpolation_ranges[0][0][0]
+        else:
+            next_range_i = frame_count + 1
+    channels = list(IN.read(5))
+    if slope:
         # channels[2] is the triangle channel
-        channels[2] = channels[2] + (i - range_begin[0]) * slope
+        channels[2] = channels[2] + adjustment
+        adjustment += slope
     sample = mix(*channels)
     OUT.write(struct.pack(out_format, sample))
     if j >= 1789773:
