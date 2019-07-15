@@ -32,6 +32,39 @@ OUT.write(struct.pack('<h', 32)) # BitsPerSample
 OUT.write(b'data')
 OUT.write(struct.pack('<i', 0)) # Subchunk2Size
 
+
+class ChangeQueue:
+    def __init__(self):
+        self.items = []
+        self.length = 0
+        self.max_length = 3
+
+    def append(self, item):
+        self.items.append(item)
+        self.length += 1
+        if self.length > self.max_length:
+            self.pop(0)
+
+    def pop(self, index):
+        self.length -= 1
+        return self.items.pop(index)
+
+    def is_discontinuous(self):
+        a = self.items[0]
+        b = self.items[1]
+        c = self.items[2]
+        run1 = b[0] - a[0]
+        run2 = c[0] - b[0]
+        rise1 = b[1] - a[1]
+        rise2 = c[1] - b[1]
+        large_rise = rise1 < -1 or rise1 > 1
+        trough_or_peak = b[1] == 0 or b[1] == 15
+        direction_changed = rise1 != rise2
+        period_decreased = (not trough_or_peak and run1 > run2) or (trough_or_peak and run1 * 2 > run2)
+        direction_changed_unexpectedly = direction_changed and period_decreased
+        return large_rise or direction_changed_unexpectedly
+
+
 def mix_apu(pulse1, pulse2, triangle, noise, dmc):
     # https://wiki.nesdev.com/w/index.php/APU_Mixer
     pulse_out = 0
@@ -65,30 +98,24 @@ def find_triangle_discontinuities(IN):
     IN.seek(40)
     frame_count = struct.unpack('<i', IN.read(4))[0] // 5
     prev_triangle = None
+    change_queue = ChangeQueue()
     interpolation_ranges = []
     direction = 1
     for i in range(frame_count):
         channels = list(IN.read(5))
         triangle = channels[2]
-        if i > 0:
-            if direction and triangle != prev_triangle and triangle != prev_triangle + direction:
-                print('Pop detected in triangle channel at sample', i)
-                interpolation_ranges.append((last_change, (i, triangle)))
-                direction = None
-                # prev_triangle is now useless for determining direction, so start over
-                prev_triangle = triangle
-            if triangle - prev_triangle == 1:
-                last_change = (i, triangle)
-                direction = 1
-            if triangle - prev_triangle == -1:
-                last_change = (i, triangle)
-                direction = -1
-            if triangle == 15:
-                direction = -1
-            if triangle == 0:
-                direction = 1
+        if i == 0:
+            change_queue.append((i, triangle))
         else:
-            last_change = (0, triangle)
+            if prev_triangle != triangle:
+                change_queue.append((i, triangle))
+            if change_queue.length == 3:
+                if change_queue.is_discontinuous():
+                    range_begin = change_queue.pop(0)
+                    range_end = change_queue.items[0]
+                    interp_range = (range_begin, range_end)
+                    print('Detected pop in triangle channel at sample', range_end[0])
+                    interpolation_ranges.append(interp_range)
         prev_triangle = triangle
         if i % 1789773 == 0:
             print('{:0.2f}%'.format(100 * i / frame_count))
